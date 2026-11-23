@@ -29,6 +29,7 @@ RUN <<-EOF
         openssl \
         gpg \
         gpg-agent \
+        postgresql-client \
         mariadb-client \
         rsync \
         rsyslog \
@@ -40,6 +41,7 @@ RUN <<-EOF
         php${PHP_PACKAGE_VERSION}-bcmath \
         php${PHP_PACKAGE_VERSION}-mbstring \
         php${PHP_PACKAGE_VERSION}-mysql \
+        php${PHP_PACKAGE_VERSION}-pgsql \
         php${PHP_PACKAGE_VERSION}-redis \
         php${PHP_PACKAGE_VERSION}-gd \
         php${PHP_PACKAGE_VERSION}-fpm \
@@ -209,9 +211,9 @@ RUN <<-EOF
     pip wheel --no-cache-dir -w /wheels/ -r /var/www/MISP/requirements.txt
 
     # Remove files we do not care for
-    find /var/www/MISP/INSTALL/* ! -name 'MYSQL.sql' -type f -exec rm {} +
-    find /var/www/MISP/INSTALL/* ! -name 'MYSQL.sql' -type d -exec rm -r {} +
-    find /var/www/MISP/INSTALL/* ! -name 'MYSQL.sql' -type l -exec rm {} +
+    find /var/www/MISP/INSTALL/* ! -name 'MYSQL.sql' ! -name 'POSTGRESQL.sql' -type f -exec rm {} +
+    find /var/www/MISP/INSTALL/* ! -name 'MYSQL.sql' ! -name 'POSTGRESQL.sql' -type d -exec rm -r {} +
+    find /var/www/MISP/INSTALL/* ! -name 'MYSQL.sql' ! -name 'POSTGRESQL.sql' -type l -exec rm {} +
     # Remove most files in .git - we do not use git functionality in docker
     find /var/www/MISP/.git/* ! -name HEAD -exec rm -rf {} +
     # Remove libraries submodules

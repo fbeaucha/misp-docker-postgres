@@ -12,7 +12,7 @@ Notable features:
 - NGINX is split into a separate Docker image ([see below](#breaking-changes); ref: [misp/misp-docker#430](https://github.com/MISP/misp-docker/pull/430))
 - Docker images are pushed regularly, no build required
 - Lightweight Docker images by using multiple build stages and a slim parent image
-- Rely on off the shelf Docker images for Exim4, Redis, and MariaDB
+- Rely on off the shelf Docker images for Exim4, Redis, and MariaDB (default) or PostgreSQL (selected with `DB_ENGINE` env var)
 - Scheduled tasks run updates, pushes, and pulls
 - Fix supervisord process control (processes are correctly terminated upon reload)
 - Fix schema update by making it completely offline (no user interaction required)
@@ -132,7 +132,7 @@ It is disabled by default, but can be enabled using compose profiles.
 1. Enable the profile in your `.env` file:
 
 ```bash
-COMPOSE_PROFILES=misp-guard
+COMPOSE_PROFILES=mysql,misp-guard
 ```
 
 2. Ensure `misp-core` is configured to use a proxy:
@@ -588,7 +588,18 @@ Copy the following directories and files:
 mkdir -p $HOME/.config/misp_conf/custom/{action_mod,expansion,export_mod,import_mod}
 ```
 
-Edit `misp.env`, and initialize the following MySQL settings:
+The database engine defaults to MariaDB (`DB_ENGINE=mysql`). Its container is gated by the `mysql` compose profile, so `.env` must include it in `COMPOSE_PROFILES`. To use PostgreSQL instead, set:
+
+```bash
+DB_ENGINE=postgres
+COMPOSE_PROFILES=postgres
+```
+
+Only the matching database container starts. `misp-core` waits in the entrypoint readiness check and will not start if the db is missing or external db is not configured.
+
+If you are using an externally provided database and do not need a DB service, simply remove the associated database profile from `COMPOSE_PROFILES` and no local db will be launched.
+
+For `DB_ENGINE=mysql` (default), initialize the following settings:
 
 ```bash
 MYSQL_HOST=
@@ -596,6 +607,15 @@ MYSQL_USER=
 MYSQL_PASSWORD=
 MYSQL_ROOT_PASSWORD=
 MYSQL_DATABASE=
+```
+
+For `DB_ENGINE=postgres`, instead set:
+
+```bash
+POSTGRES_HOST=
+POSTGRES_USER=
+POSTGRES_PASSWORD=
+POSTGRES_DB=
 ```
 
 Set the Redis password:

@@ -7,6 +7,26 @@ export NUM_WORKERS_EMAIL=${NUM_WORKERS_EMAIL:-${WORKERS:-5}}
 export NUM_WORKERS_UPDATE=${NUM_WORKERS_UPDATE:-${WORKERS:-1}}
 export NUM_WORKERS_CACHE=${NUM_WORKERS_CACHE:-${WORKERS:-5}}
 
+export DB_ENGINE="${DB_ENGINE:-mysql}"
+
+export POSTGRES_HOST="${POSTGRES_HOST:-db}"
+export POSTGRES_PORT="${POSTGRES_PORT:-5432}"
+export POSTGRES_USER="${POSTGRES_USER:-misp}"
+export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-example}"
+export POSTGRES_DB="${POSTGRES_DB:-misp}"
+
+export PGPASSWORD="${POSTGRES_PASSWORD}"
+
+export POSTGRES_CMD="psql \
+  --host=${POSTGRES_HOST} \
+  --port=${POSTGRES_PORT} \
+  --username=${POSTGRES_USER} \
+  --dbname=${POSTGRES_DB} \
+  --no-psqlrc \
+  --tuples-only \
+  --no-align \
+  --set=ON_ERROR_STOP=1"
+
 export MYSQL_HOST=${MYSQL_HOST:-db}
 export MYSQL_PORT=${MYSQL_PORT:-3306}
 export MYSQL_USER=${MYSQL_USER:-misp}
@@ -21,6 +41,23 @@ if [[ "${MYSQL_TLS}" != true ]]; then
   MYSQL_CMD+=" --skip-ssl"
   export MYSQL_CMD
 fi
+
+# Select the database engine used by the scripts. configure_misp.sh and utilities.sh only use DB_CMD and DB_DATABASE.
+case "${DB_ENGINE}" in
+  postgres)
+    export DB_CMD="${POSTGRES_CMD}"
+    export DB_DATABASE="${POSTGRES_DB}"
+    ;;
+  mysql)
+    export DB_CMD="${MYSQL_CMD}"
+    export DB_DATABASE="${MYSQL_DATABASE}"
+    ;;
+  *)
+    echo "ERROR: DB_ENGINE must be 'postgres' or 'mysql', got '${DB_ENGINE}'" >&2
+    exit 1
+    ;;
+esac
+
 export REDIS_HOST=${REDIS_HOST:-redis}
 export REDIS_PORT=${REDIS_PORT:-6379}
 export ENABLE_REDIS_EMPTY_PASSWORD=${ENABLE_REDIS_EMPTY_PASSWORD:-false}

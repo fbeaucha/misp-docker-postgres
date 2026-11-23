@@ -8,17 +8,21 @@ term_proc() {
 
 trap term_proc SIGTERM
 
-init_mysql() {
-    # Test when MySQL is ready....
+init_database() {
+    # Test when the database is ready....
     # wait for Database come ready
     isDBup () {
-        echo "SHOW STATUS" | $MYSQL_CMD 1>/dev/null
+        echo "SELECT 1;" | $DB_CMD 1>/dev/null
         echo $?
     }
 
     isDBinitDone () {
         # Table attributes has existed since at least v2.1
-        echo "DESCRIBE attributes" | $MYSQL_CMD 1>/dev/null
+        if [ "${DB_ENGINE}" = "mysql" ]; then
+            echo "DESCRIBE attributes" | $DB_CMD 1>/dev/null
+        else
+            [[ "$(echo "SELECT to_regclass('attributes') IS NOT NULL;" | $DB_CMD)" == "t" ]]
+        fi
         echo $?
     }
 
@@ -29,7 +33,7 @@ init_mysql() {
         RETRY=$(( RETRY - 1))
     done
     if [ $RETRY -le 0 ]; then
-        >&2 echo "... error: Could not connect to Database on $MYSQL_HOST:$MYSQL_PORT"
+        >&2 echo "... error: Could not connect to ${DB_ENGINE} database"
         exit 1
     fi
 
@@ -37,8 +41,13 @@ init_mysql() {
         echo "... database has already been initialized"
         export DB_ALREADY_INITIALISED=true
     else
-        echo "... database has not been initialized, importing MySQL scheme..."
-        $MYSQL_CMD < /var/www/MISP/INSTALL/MYSQL.sql
+        if [ "${DB_ENGINE}" = "mysql" ]; then
+            echo "... database has not been initialized, importing MySQL scheme..."
+            $DB_CMD < /var/www/MISP/INSTALL/MYSQL.sql
+        else
+            echo "... database has not been initialized, importing PostgreSQL scheme..."
+            $DB_CMD < /var/www/MISP/INSTALL/POSTGRESQL.sql
+        fi
     fi
 }
 
@@ -148,9 +157,9 @@ fi
 
 echo "INIT | Loading environment and functions"
 
-# Initialize MySQL
-echo "INIT | Initialize MySQL ..."
-init_mysql
+# Initialize the database
+echo "INIT | Initialize ${DB_ENGINE} ..."
+init_database
 
 echo "INIT | Change PHP values ..."
 change_php_vars

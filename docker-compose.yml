@@ -56,10 +56,47 @@ services:
     volumes:
       - cache_data:/data:Z
 
-  db:
+  # Enabled by COMPOSE_PROFILES=postgres (DB_ENGINE=postgres).
+  db-postgres:
+    image: ${REGISTRY_MIRROR_URL:-}postgres:16
+    profiles:
+      - postgres
+    restart: always
+    networks:
+      default:
+        aliases:
+          - db
+    environment:
+      - "POSTGRES_USER=${POSTGRES_USER:-misp}"
+      - "POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-example}"
+      - "POSTGRES_DB=${POSTGRES_DB:-misp}"
+      - "PGDATA=/var/lib/postgresql/data/pgdata"
+      - "TZ=${TZ:-UTC}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data:Z
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${POSTGRES_USER:-misp} -d $${POSTGRES_DB:-misp}"
+        ]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+      start_period: 30s
+      start_interval: 5s
+
+  # Enabled by COMPOSE_PROFILES=mysql (DB_ENGINE=mysql). misp-core reaches it as host "db".
+  db-mysql:
     # We use MariaDB because it supports ARM and has the expected collations
     image: ${REGISTRY_MIRROR_URL:-}ghcr.io/mariadb/mariadb:10.11
+    profiles:
+      - mysql
     restart: always
+    networks:
+      default:
+        aliases:
+          - db
     environment:
       - "MYSQL_USER=${MYSQL_USER:-misp}"
       - "MYSQL_PASSWORD=${MYSQL_PASSWORD:-example}"
@@ -111,8 +148,6 @@ services:
         - PYPI_TAXII2_CLIENT_VERSION=${PYPI_TAXII2_CLIENT_VERSION}
     depends_on:
       redis:
-        condition: service_healthy
-      db:
         condition: service_healthy
       misp-modules:
         condition: service_healthy
@@ -282,6 +317,14 @@ services:
           "pull_rules": "${SYNCSERVERS_1_PULL_RULES}",
           "pull": true
         }
+      # database engine: "mysql" or "postgres". Must match the database profile in COMPOSE_PROFILES.
+      - "DB_ENGINE=${DB_ENGINE:-mysql}"
+      # Postgres Settings
+      - "POSTGRES_HOST=${POSTGRES_HOST:-db-postgres}"
+      - "POSTGRES_PORT=${POSTGRES_PORT:-5432}"
+      - "POSTGRES_USER=${POSTGRES_USER:-misp}"
+      - "POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-example}"
+      - "POSTGRES_DB=${POSTGRES_DB:-misp}"
       # mysql settings
       - "MYSQL_HOST=${MYSQL_HOST:-db}"
       - "MYSQL_PORT=${MYSQL_PORT:-3306}"
@@ -427,6 +470,7 @@ services:
       start_period: 10s
 
 volumes:
+  postgres_data:
   mysql_data:
   cache_data:
   misp_guard_ca:

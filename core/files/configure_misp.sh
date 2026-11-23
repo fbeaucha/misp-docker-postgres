@@ -484,21 +484,21 @@ init_user() {
     # Create the main user if it is not there already
     sudo -u www-data /var/www/MISP/app/Console/cake user init -q > /dev/null 2>&1
 
-    echo "UPDATE $MYSQL_DATABASE.users SET email = \"${ADMIN_EMAIL}\" WHERE id = 1;" | ${MYSQL_CMD}
+    echo "UPDATE users SET email = '${ADMIN_EMAIL}' WHERE id = 1;" | ${DB_CMD}
 
     if [ ! -z "$ADMIN_ORG" ]; then
         echo "... setting admin org to '${ADMIN_ORG}'"
-        echo "UPDATE $MYSQL_DATABASE.organisations SET name = \"${ADMIN_ORG}\" where id = 1;" | ${MYSQL_CMD}
+        echo "UPDATE organisations SET name = '${ADMIN_ORG}' where id = 1;" | ${DB_CMD}
         sudo -u www-data /var/www/MISP/app/Console/cake Admin setSetting -q "MISP.org" "${ADMIN_ORG}"
     fi
 
     if [ ! -z "$ADMIN_ORG_UUID" ]; then
         echo "... setting admin org uuid to '${ADMIN_ORG_UUID}'"
-        echo "UPDATE $MYSQL_DATABASE.organisations SET uuid = \"${ADMIN_ORG_UUID}\" where id = 1;" | ${MYSQL_CMD}
+        echo "UPDATE organisations SET uuid = '${ADMIN_ORG_UUID}' where id = 1;" | ${DB_CMD}
     fi
 
     if [ -n "$ADMIN_KEY" ]; then
-        ADMIN_KEY_ALREADY_SET=$($MYSQL_CMD -N -s -e 'SELECT authkey FROM auth_keys WHERE user_id = 1 AND (expiration = 0 OR expiration > UNIX_TIMESTAMP());' |
+        ADMIN_KEY_ALREADY_SET=$(echo "SELECT authkey FROM auth_keys WHERE user_id = 1 AND (expiration = 0 OR expiration > $(sql_epoch_now));" | $DB_CMD |
             php -r '$match = false; while (($hash = fgets(STDIN)) !== false) { $match = $match || password_verify(getenv("ADMIN_KEY"), trim($hash)); } echo (int) $match;')
         if [ "$ADMIN_KEY_ALREADY_SET" = "1" ]; then
             echo "... configured admin key already active, not changing"
@@ -511,8 +511,8 @@ init_user() {
             CHANGE_CMD=(sudo -u www-data /var/www/MISP/app/Console/cake User change_authkey 1 "${ADMIN_KEY}")
         fi
     elif [ -z "$ADMIN_KEY" ] && [ "$AUTOGEN_ADMIN_KEY" == "true" ]; then
-        HAS_VALID_KEY=$($MYSQL_CMD -N -s -e 'SELECT EXISTS(SELECT 1 FROM auth_keys WHERE user_id = 1 AND (expiration = 0 OR expiration > UNIX_TIMESTAMP()));')
-	    if (( HAS_VALID_KEY == 0 )); then
+        HAS_VALID_KEY=$(echo "SELECT CASE WHEN EXISTS(SELECT 1 FROM auth_keys WHERE user_id = 1 AND (expiration = 0 OR expiration > $(sql_epoch_now))) THEN 1 ELSE 0 END;" | $DB_CMD)
+	    if [[ "$HAS_VALID_KEY" != "1" ]]; then
             echo "... regenerating admin key (set \$ADMIN_KEY if you want it to change)"
             CHANGE_CMD=(sudo -u www-data /var/www/MISP/app/Console/cake User change_authkey 1)
 	    else
@@ -547,7 +547,7 @@ init_user() {
     else
         echo "... setting admin password skipped"
     fi
-    echo "UPDATE $MYSQL_DATABASE.users SET change_pw = 0 WHERE id = 1;" | ${MYSQL_CMD}
+    echo "UPDATE users SET change_pw = FALSE WHERE id = 1;" | ${DB_CMD}
 }
 
 apply_critical_fixes() {
@@ -713,33 +713,38 @@ create_default_scheduled_tasks() {
         PUSHALL_INTERVAL="$(convert_cron_to_seconds "$CRON_PUSHALL")"
     fi
 
-    echo "INSERT INTO $MYSQL_DATABASE.scheduled_tasks (id, type, timer, description, user_id, action, params, enabled, next_execution_time, message) \
-        VALUES (1, 'Feed', $FETCH_FEED_INTERVAL, 'Daily fetch of all Feeds', $CRON_USER_ID, 'fetch', 'all', 1, 0, '') \
-        ON DUPLICATE KEY UPDATE user_id=$CRON_USER_ID, timer=$FETCH_FEED_INTERVAL;" | ${MYSQL_CMD}
-    echo "INSERT IGNORE INTO $MYSQL_DATABASE.scheduled_tasks (id, type, timer, description, user_id, action, params, enabled, next_execution_time, message) \
-        VALUES (2, 'Feed', $CACHE_FEED_INTERVAL, 'Daily cache of all Feeds', $CRON_USER_ID, 'cache', 'all,all', 1, 0, '') \
-        ON DUPLICATE KEY UPDATE user_id=$CRON_USER_ID, timer=$CACHE_FEED_INTERVAL;" | ${MYSQL_CMD}
-    echo "INSERT IGNORE INTO $MYSQL_DATABASE.scheduled_tasks (id, type, timer, description, user_id, action, params, enabled, next_execution_time, message) \
-        VALUES (3, 'Server', $PULLALL_INTERVAL, 'Daily pull of all Servers', $CRON_USER_ID, 'pull', 'all,full', 1, 0, '') \
-        ON DUPLICATE KEY UPDATE user_id=$CRON_USER_ID, timer=$PULLALL_INTERVAL;" | ${MYSQL_CMD}
-    echo "INSERT IGNORE INTO $MYSQL_DATABASE.scheduled_tasks (id, type, timer, description, user_id, action, params, enabled, next_execution_time, message) \
-        VALUES (4, 'Server', $PUSHALL_INTERVAL, 'Daily push of all Servers', $CRON_USER_ID, 'push', 'all,full', 1, 0, '') \
-        ON DUPLICATE KEY UPDATE user_id=$CRON_USER_ID, timer=$PUSHALL_INTERVAL;" | ${MYSQL_CMD}
-    echo "INSERT IGNORE INTO $MYSQL_DATABASE.scheduled_tasks (id, type, timer, description, user_id, action, enabled, next_execution_time, message) \
-        VALUES (5, 'Admin', 86400, 'Daily update of Galaxies', $CRON_USER_ID, 'updateGalaxies', 1, 0, '') \
-        ON DUPLICATE KEY UPDATE user_id=$CRON_USER_ID;" | ${MYSQL_CMD}
-    echo "INSERT IGNORE INTO $MYSQL_DATABASE.scheduled_tasks (id, type, timer, description, user_id, action, enabled, next_execution_time, message) \
-        VALUES (6, 'Admin', 86400, 'Daily update of Taxonomies', $CRON_USER_ID, 'updateTaxonomies', 1, 0, '') \
-        ON DUPLICATE KEY UPDATE user_id=$CRON_USER_ID;" | ${MYSQL_CMD}
-    echo "INSERT IGNORE INTO $MYSQL_DATABASE.scheduled_tasks (id, type, timer, description, user_id, action, enabled, next_execution_time, message) \
-        VALUES (7, 'Admin', 86400, 'Daily update of Warninglists', $CRON_USER_ID, 'updateWarningLists', 1, 0, '') \
-        ON DUPLICATE KEY UPDATE user_id=$CRON_USER_ID;" | ${MYSQL_CMD}
-    echo "INSERT IGNORE INTO $MYSQL_DATABASE.scheduled_tasks (id, type, timer, description, user_id, action, enabled, next_execution_time, message) \
-        VALUES (8, 'Admin', 86400, 'Daily update of Noticelists', $CRON_USER_ID, 'updateNoticeLists', 1, 0, '') \
-        ON DUPLICATE KEY UPDATE user_id=$CRON_USER_ID;" | ${MYSQL_CMD}
-    echo "INSERT IGNORE INTO $MYSQL_DATABASE.scheduled_tasks (id, type, timer, description, user_id, action, enabled, next_execution_time, message) \
-        VALUES (9, 'Admin', 86400, 'Daily update of Object Templates', $CRON_USER_ID, 'updateObjectTemplates', 1, 0, '') \
-        ON DUPLICATE KEY UPDATE user_id=$CRON_USER_ID;" | ${MYSQL_CMD}
+    echo "INSERT INTO scheduled_tasks (id, type, timer, description, user_id, action, params, enabled, next_execution_time, message) \
+        VALUES (1, 'Feed', $FETCH_FEED_INTERVAL, 'Daily fetch of all Feeds', $CRON_USER_ID, 'fetch', 'all', TRUE, 0, '') \
+        $(sql_upsert_clause "user_id=$CRON_USER_ID, timer=$FETCH_FEED_INTERVAL")" | ${DB_CMD}
+    echo "INSERT INTO scheduled_tasks (id, type, timer, description, user_id, action, params, enabled, next_execution_time, message) \
+        VALUES (2, 'Feed', $CACHE_FEED_INTERVAL, 'Daily cache of all Feeds', $CRON_USER_ID, 'cache', 'all,all', TRUE, 0, '') \
+        $(sql_upsert_clause "user_id=$CRON_USER_ID, timer=$CACHE_FEED_INTERVAL")" | ${DB_CMD}
+    echo "INSERT INTO scheduled_tasks (id, type, timer, description, user_id, action, params, enabled, next_execution_time, message) \
+        VALUES (3, 'Server', $PULLALL_INTERVAL, 'Daily pull of all Servers', $CRON_USER_ID, 'pull', 'all,full', TRUE, 0, '') \
+        $(sql_upsert_clause "user_id=$CRON_USER_ID, timer=$PULLALL_INTERVAL")" | ${DB_CMD}
+    echo "INSERT INTO scheduled_tasks (id, type, timer, description, user_id, action, params, enabled, next_execution_time, message) \
+        VALUES (4, 'Server', $PUSHALL_INTERVAL, 'Daily push of all Servers', $CRON_USER_ID, 'push', 'all,full', TRUE, 0, '') \
+        $(sql_upsert_clause "user_id=$CRON_USER_ID, timer=$PUSHALL_INTERVAL")" | ${DB_CMD}
+    echo "INSERT INTO scheduled_tasks (id, type, timer, description, user_id, action, enabled, next_execution_time, message) \
+        VALUES (5, 'Admin', 86400, 'Daily update of Galaxies', $CRON_USER_ID, 'updateGalaxies', TRUE, 0, '') \
+        $(sql_upsert_clause "user_id=$CRON_USER_ID")" | ${DB_CMD}
+    echo "INSERT INTO scheduled_tasks (id, type, timer, description, user_id, action, enabled, next_execution_time, message) \
+        VALUES (6, 'Admin', 86400, 'Daily update of Taxonomies', $CRON_USER_ID, 'updateTaxonomies', TRUE, 0, '') \
+        $(sql_upsert_clause "user_id=$CRON_USER_ID")" | ${DB_CMD}
+    echo "INSERT INTO scheduled_tasks (id, type, timer, description, user_id, action, enabled, next_execution_time, message) \
+        VALUES (7, 'Admin', 86400, 'Daily update of Warninglists', $CRON_USER_ID, 'updateWarningLists', TRUE, 0, '') \
+        $(sql_upsert_clause "user_id=$CRON_USER_ID")" | ${DB_CMD}
+    echo "INSERT INTO scheduled_tasks (id, type, timer, description, user_id, action, enabled, next_execution_time, message) \
+        VALUES (8, 'Admin', 86400, 'Daily update of Noticelists', $CRON_USER_ID, 'updateNoticeLists', TRUE, 0, '') \
+        $(sql_upsert_clause "user_id=$CRON_USER_ID")" | ${DB_CMD}
+    echo "INSERT INTO scheduled_tasks (id, type, timer, description, user_id, action, enabled, next_execution_time, message) \
+        VALUES (9, 'Admin', 86400, 'Daily update of Object Templates', $CRON_USER_ID, 'updateObjectTemplates', TRUE, 0, '') \
+        $(sql_upsert_clause "user_id=$CRON_USER_ID")" | ${DB_CMD}
+
+    if [ "${DB_ENGINE}" = "postgres" ]; then
+        # Explicit ids do not advance a serial sequence; sync it so MISP's own inserts do not collide
+        echo "SELECT setval(pg_get_serial_sequence('scheduled_tasks', 'id'), COALESCE(MAX(id), 1), MAX(id) IS NOT NULL) FROM scheduled_tasks;" | ${DB_CMD} > /dev/null
+    fi
 }
 
 print_version() {

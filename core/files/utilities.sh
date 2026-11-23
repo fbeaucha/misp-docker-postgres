@@ -28,6 +28,24 @@ check_env_vars() {
     fi
 }
 
+# SQL fragments that differ between MySQL/MariaDB and PostgreSQL
+sql_epoch_now() {
+    if [ "${DB_ENGINE}" = "mysql" ]; then
+        echo "UNIX_TIMESTAMP()"
+    else
+        echo "EXTRACT(EPOCH FROM NOW())::bigint"
+    fi
+}
+
+# $1 = column assignments applied on conflict with the scheduled_tasks primary key
+sql_upsert_clause() {
+    if [ "${DB_ENGINE}" = "mysql" ]; then
+        echo "ON DUPLICATE KEY UPDATE $1;"
+    else
+        echo "ON CONFLICT (id) DO UPDATE SET $1;"
+    fi
+}
+
 # Kludgy alternative to using cake Admin getSetting.
 setting_is_set_alt() {
     local setting="$1"
@@ -37,8 +55,8 @@ setting_is_set_alt() {
     if $setting_in_config_file; then
         return 0
     elif $db_settings_enabled; then
-        local setting_in_db=$(echo "SELECT EXISTS(SELECT 1 FROM $MYSQL_DATABASE.system_settings WHERE setting = \"${setting}\");" | ${MYSQL_CMD})
-        if [[ $setting_in_db -eq 1 ]]; then
+        local setting_in_db=$(echo "SELECT CASE WHEN EXISTS(SELECT 1 FROM system_settings WHERE setting = '${setting}') THEN 1 ELSE 0 END;" | ${DB_CMD})
+        if [[ "$setting_in_db" == "1" ]]; then
             return 0
         fi
     fi

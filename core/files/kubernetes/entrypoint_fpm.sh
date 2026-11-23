@@ -14,9 +14,9 @@ mv /etc/supervisor/conf.d/50-workers.conf{.kubernetes,}
 echo "INIT | Starting supervisord"
 /usr/local/bin/supervisord -c /etc/supervisor/supervisord.conf &
 
-# Initialize MySQL
-echo "INIT | Initialize MySQL ..."
-init_mysql
+# Initialize the database
+echo "INIT | Initialize ${DB_ENGINE} ..."
+init_database
 
 # Initialize MISP
 echo "INIT | Initialize MISP installation ..."
